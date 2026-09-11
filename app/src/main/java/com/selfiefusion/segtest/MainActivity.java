@@ -109,6 +109,18 @@ public class MainActivity extends ComponentActivity {
     private static final float LUMA_G = 0.7152f;
     private static final float LUMA_B = 0.0722f;
 
+    // Frame-crop fade: where the person silhouette was CUT by the front
+    // camera's frame (arms/torso/head reaching a frame border), the mask
+    // is fully opaque up to that border and the composite would show a
+    // hard rectangular seam ("pasted rectangle" look at the sides). The
+    // cut-out alpha instead ramps smoothstep 0 -> 1 over this fraction of
+    // the image width from the LEFT and RIGHT borders and of the height
+    // from the TOP, so the person dissolves into the scene. The BOTTOM
+    // border stays hard by design: the grounded-person rule glues it to
+    // the frame bottom, where a real photo crops it. Named tunable in
+    // the same spirit as SEG_MIN/SEG_MAX (device-test feedback).
+    private static final float EDGE_FADE_FRACTION = 0.03f;
+
     // Precomputed confidence -> output tables (256 entries): turns the
     // per-pixel float smoothstep/color math into a single array lookup.
     private static final int[] ALPHA_LUT = new int[256];
@@ -126,6 +138,12 @@ public class MainActivity extends ComponentActivity {
             RED_MASK_LUT[q] = (c << 24) | 0x00FF3030;
             HEAT_MASK_LUT[q] = (q << 24) | (q << 16) | (q << 8) | q;
         }
+    }
+
+    private static float smoothstep(float t) {
+        if (t < 0f) t = 0f;
+        else if (t > 1f) t = 1f;
+        return t * t * (3f - 2f * t);
     }
 
     private PreviewView previewView;
@@ -182,6 +200,10 @@ public class MainActivity extends ComponentActivity {
     private final Paint workPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
     private int[] personPixels;
     private int[] maskXOfs;
+    // Frame-crop fade ramps for the live person bitmap (same look as the
+    // saved still's cut-out fade), rebuilt with the work bitmap.
+    private float[] liveFadeX;
+    private float[] liveFadeY;
 
     private boolean saveExtras = false;
     private boolean showStats = false;
@@ -636,6 +658,22 @@ public class MainActivity extends ComponentActivity {
             for (int x = 0; x < tw; x++) {
                 maskXOfs[x] = Math.min(maskW - 1, x * maskW / tw);
             }
+            // Frame-crop fade ramps (see EDGE_FADE_FRACTION): left/right
+            // and top, so the live preview matches the saved still.
+            int fadeW = Math.max(1, Math.round(tw * EDGE_FADE_FRACTION));
+            int fadeH = Math.max(1, Math.round(th * EDGE_FADE_FRACTION));
+            liveFadeX = new float[tw];
+            for (int x = 0; x < tw; x++) {
+                float fromLeft = x < fadeW ? smoothstep(x / (float) fadeW) : 1f;
+                float fromRight = tw - 1 - x < fadeW
+                        ? smoothstep((tw - 1 - x) / (float) fadeW) : 1f;
+                liveFadeX[x] = Math.min(fromLeft, fromRight);
+            }
+            liveFadeY = new float[th];
+            for (int y = 0; y < th; y++) {
+                // Top only: the bottom edge stays hard (grounded person).
+                liveFadeY[y] = y < fadeH ? smoothstep(y / (float) fadeH) : 1f;
+            }
         }
         // Single filtered draw: rotate + scale into the reused work bitmap
         // (replaces the previous rotate bitmap -> scaled bitmap -> getPixels
@@ -658,12 +696,14 @@ public class MainActivity extends ComponentActivity {
         for (int y = 0; y < th; y++) {
             int maskRow = Math.min(maskH - 1, y * maskH / th) * maskW;
             int row = y * tw;
+            float fadeY = liveFadeY[y];
             for (int x = 0; x < tw; x++) {
                 int q = (int) (conf[maskRow + maskXOfs[x]] * 255f + 0.5f);
                 if (q < 0) q = 0;
                 else if (q > 255) q = 255;
                 int i = row + x;
-                personPixels[i] = (ALPHA_LUT[q] << 24) | (personPixels[i] & 0x00FFFFFF);
+                int alpha = (int) (ALPHA_LUT[q] * fadeY * liveFadeX[x] + 0.5f);
+                personPixels[i] = (alpha << 24) | (personPixels[i] & 0x00FFFFFF);
             }
         }
         return Bitmap.createBitmap(personPixels, tw, th, Bitmap.Config.ARGB_8888);
@@ -1118,12 +1158,38 @@ private void processFused(Bitmap front, byte[] frontJpeg, byte[] backJpeg,
         // DST_IN draw (SIMD-optimized). ARGB_8888 + DST_IN is the canonical
         // masking pattern; v0.6.1's ALPHA_8 + copyPixelsFromBuffer variant
         // silently produced an un-masked rectangle on the Pixel 9.
+        //
+        // Frame-crop fade (see EDGE_FADE_FRACTION): the mask confidence is
+        // multiplied by smoothstep ramps from the left/right and top
+        // borders BEFORE the alpha quantization, so where the person was
+        // cut by the front camera's frame the cut-out dissolves into the
+        // back scene instead of showing a hard rectangular seam. The mask
+        // maps 1:1 (or is scaled by the DST_IN draw) to the photo, so the
+        // fade is ~3% of the photo in either case. The bottom stays hard
+        // (grounded person, glued to the frame like a real photo crop).
+        int fadeW = Math.max(1, Math.round(maskWidth * EDGE_FADE_FRACTION));
+        int fadeH = Math.max(1, Math.round(maskHeight * EDGE_FADE_FRACTION));
+        float[] fadeX = new float[maskWidth];
+        for (int x = 0; x < maskWidth; x++) {
+            float fromLeft = x < fadeW ? smoothstep(x / (float) fadeW) : 1f;
+            float fromRight = maskWidth - 1 - x < fadeW
+                    ? smoothstep((maskWidth - 1 - x) / (float) fadeW) : 1f;
+            fadeX[x] = Math.min(fromLeft, fromRight);
+        }
+        float[] fadeY = new float[maskHeight];
+        for (int y = 0; y < maskHeight; y++) {
+            fadeY[y] = y < fadeH ? smoothstep(y / (float) fadeH) : 1f;
+        }
         int[] maskArgb = new int[maskCount];
-        for (int i = 0; i < maskCount; i++) {
-            int q = (int) (conf[i] * 255f + 0.5f);
-            if (q < 0) q = 0;
-            else if (q > 255) q = 255;
-            maskArgb[i] = (ALPHA_LUT[q] << 24) | 0x00FFFFFF;
+        int i = 0;
+        for (int y = 0; y < maskHeight; y++) {
+            float fy = fadeY[y];
+            for (int x = 0; x < maskWidth; x++, i++) {
+                int q = (int) (conf[i] * fy * fadeX[x] * 255f + 0.5f);
+                if (q < 0) q = 0;
+                else if (q > 255) q = 255;
+                maskArgb[i] = (ALPHA_LUT[q] << 24) | 0x00FFFFFF;
+            }
         }
         Bitmap alphaMask = Bitmap.createBitmap(maskArgb, maskWidth, maskHeight,
                 Bitmap.Config.ARGB_8888);
