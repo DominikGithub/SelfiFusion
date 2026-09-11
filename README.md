@@ -24,6 +24,7 @@ Under the hood, SelfieFusion is an Android app that streams the front and back c
 - **What you arrange is what you get** — the saved fused still reproduces the exact position and size of the person from the live preview, including the grounded bottom edge.
 - **Optional stats overlay** — FPS, mask resolution/format, sensor rotation and camera mode; hidden by default, toggleable via the menu (*Show stats (FPS)*)
 - **Full-resolution fused stills** — one shutter press saves the fused JPG plus, optionally, the source files (menu toggle)
+- **Color match** — before fusing, the person's lighting statistics (brightness, contrast, white balance) are matched onto the back scene's, so the composite stops looking like two photos taken by two different cameras. Toggleable via the menu (*Color match person to scene*, default on)
 - **Graceful fallback** — devices without concurrent front+back streaming automatically run in front-camera segmentation mode
 
 ## Requirements
@@ -37,7 +38,7 @@ Under the hood, SelfieFusion is an Android app that streams the front and back c
 
 - Java 
 - [CameraX](https://developer.android.com/training/camerax) 1.3.4 (`ConcurrentCamera`) 
-- [ML Kit](https://developers.google.com/mlkit/vision/image-segmentation) Selfie Segmentation 
+- [ML Kit](https://developers.google.com/ml-kit/vision/selfie-segmentation) Selfie Segmentation 
 - single-activity app, no UI framework 
 
 ## Building
@@ -127,8 +128,9 @@ The committed `gradle.properties` is tuned for low-RAM machines (`-Xmx900m`); ra
 3. The confidence mask is temporally smoothed (EMA), spatially blurred and converted into a smoothstep alpha matte, which kills edge flicker and gives soft hair edges.
 4. In Composite mode the person cut-out is drawn over the rear-camera preview; touch gestures resize and move it, with its bottom edge always locked to the frame so the composition stays photorealistic.
 5. On shutter press both cameras capture full-resolution JPEGs. Segmentation runs again on the full-resolution front photo, and the cut-out is placed onto the back photo exactly as arranged in the live preview — same position, same size, grounded bottom edge.
+6. Before compositing, the cut-out's luma/chroma statistics are transferred onto the back photo (Reinhard-style color match, applied as a single native `ColorMatrix` pass), so the person adopts the scene's brightness, contrast and white balance instead of keeping the front camera's.
 
 ## Notes
 
 - The stats overlay (menu: *Show stats (FPS)*) shows the active view mode, FPS, mask resolution/format, sensor rotation, camera configuration and what the shutter will save. It is hidden by default; in *Overlay off* mode its FPS number shows the raw camera delivery rate, which helps separate camera-side from pipeline-side slowness.
-- Lighting/color mismatch between the front- and back-camera halves is the known remaining.
+- The color match (menu: *Color match person to scene*, default on) runs in the save pipeline only — the live preview still shows the person in the front camera's raw colors; the saved JPG contains the scene-matched person. The chroma adaptation is damped and capped, so even strongly colored scenes (sunset, forest) tint the face only moderately.

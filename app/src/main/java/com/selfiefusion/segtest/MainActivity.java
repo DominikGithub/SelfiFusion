@@ -8,6 +8,8 @@ import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
+import android.graphics.ColorMatrix;
+import android.graphics.ColorMatrixColorFilter;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
@@ -82,6 +84,30 @@ public class MainActivity extends ComponentActivity {
     // EVERY camera frame using the cached mask; the segmenter only re-runs
     // when this much time has passed since the last completed run.
     private static final long SEG_INTERVAL_MS = 200;
+
+    // --- Color match (M3): the cut-out person adopts the back scene's ---
+    // --- lighting so the fused JPG stops looking like two photos from  ---
+    // --- two different cameras.                                       ---
+    // Statistics are collected on small downscaled copies (long side
+    // capped at COLOR_STATS_SIDE); the transfer is applied as ONE native
+    // ColorMatrix draw, never a full-res Java pixel loop. The named
+    // constants are the tunables for device-test feedback:
+    //   - luma: person mean AND contrast (std) mapped onto the scene's,
+    //     scale ratio clamped to [COLOR_LUMA_SCALE_MIN, MAX] (exposure +
+    //     tonality adoption)
+    //   - chroma: the white-balance gap (mean U/V delta) applied damped
+    //     (COLOR_CHROMA_STRENGTH) and capped (COLOR_CHROMA_SHIFT_MAX), so
+    //     a dominantly colored scene (sunset, forest) cannot tint the
+    //     face unnaturally.
+    private static final int COLOR_STATS_SIDE = 192;
+    private static final float COLOR_LUMA_SCALE_MIN = 0.60f;
+    private static final float COLOR_LUMA_SCALE_MAX = 1.70f;
+    private static final float COLOR_CHROMA_STRENGTH = 0.60f;
+    private static final float COLOR_CHROMA_SHIFT_MAX = 16f;
+    // Rec.709 luma; chroma axes of the transfer: U = R - Y, V = B - Y.
+    private static final float LUMA_R = 0.2126f;
+    private static final float LUMA_G = 0.7152f;
+    private static final float LUMA_B = 0.0722f;
 
     // Precomputed confidence -> output tables (256 entries): turns the
     // per-pixel float smoothstep/color math into a single array lookup.
@@ -159,6 +185,7 @@ public class MainActivity extends ComponentActivity {
 
     private boolean saveExtras = false;
     private boolean showStats = false;
+    private boolean colorMatch = true;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private long frameCount = 0;
@@ -654,12 +681,19 @@ public class MainActivity extends ComponentActivity {
                 : R.id.mode_off;
         menu.findItem(checkedId).setChecked(true);
         menu.findItem(R.id.save_extras).setChecked(saveExtras);
+        menu.findItem(R.id.color_match).setChecked(colorMatch);
         menu.findItem(R.id.show_stats).setChecked(showStats);
         popup.setOnMenuItemClickListener(item -> {
             int id = item.getItemId();
             if (id == R.id.save_extras) {
                 saveExtras = !saveExtras;
                 item.setChecked(saveExtras);
+                updateInfo();
+                return true;
+            }
+            if (id == R.id.color_match) {
+                colorMatch = !colorMatch;
+                item.setChecked(colorMatch);
                 updateInfo();
                 return true;
             }
@@ -687,8 +721,9 @@ public class MainActivity extends ComponentActivity {
         }
         String shutterHint;
         String extrasNote = saveExtras ? " (+ originals)" : "";
+        String matchNote = colorMatch ? " (color-matched)" : "";
         if (dualActive && frontCaptureBound && backCaptureBound) {
-            shutterHint = "Shutter: save FUSED selfie JPG" + extrasNote;
+            shutterHint = "Shutter: save FUSED selfie JPG" + extrasNote + matchNote;
         } else if (frontCaptureBound) {
             shutterHint = (dualActive ? "Shutter: front cut-out PNG only (no back still)"
                     : "Shutter: save cut-out PNG") + extrasNote;
@@ -931,6 +966,11 @@ private void processFused(Bitmap front, byte[] frontJpeg, byte[] backJpeg,
                 finishCaptureUi(false, null);
                 return;
             }
+            // M3 color match: adopt the back scene's lighting before the
+            // composite (dims unchanged -> placement math unaffected).
+            if (colorMatch) {
+                cutout = colorMatchToScene(cutout, back);
+            }
             fused = Bitmap.createBitmap(back.getWidth(), back.getHeight(), Bitmap.Config.ARGB_8888);
             Canvas canvas = new Canvas(fused);
             canvas.drawBitmap(back, 0, 0, null);
@@ -1098,6 +1138,161 @@ private void processFused(Bitmap front, byte[] frontJpeg, byte[] backJpeg,
         RectF full = new RectF(0, 0, photoWidth, photoHeight);
         canvas.drawBitmap(alphaMask, null, full, maskPaint);
         return cutout;
+    }
+
+    /**
+     * M3 color match: transfers the back scene's lighting statistics onto
+     * the cut-out person (Reinhard-style statistical color transfer,
+     * computed in a luma/chroma split of sRGB: Y = Rec.709 luma, U = R-Y,
+     * V = B-Y):
+     *   - luma: person mean AND contrast (std) are mapped onto the scene's
+     *     (exposure/tonality adoption; the scale ratio is clamped),
+     *   - chroma: the mean U/V delta - the white-balance gap between the
+     *     two cameras - is applied damped and capped.
+     * The person statistics are weighted by the cut-out's own alpha, so
+     * only person pixels contribute; the scene statistics come from the
+     * whole back photo (global illuminant estimate). The complete
+     * transfer is affine in RGB, so it is applied with ONE native
+     * ColorMatrix draw instead of a full-res Java pixel loop (same
+     * philosophy as the v0.6.1/v0.7.0 compositing rework). Returns the
+     * matched bitmap (input recycled); on degenerate statistics the
+     * input is returned unchanged.
+     */
+    private Bitmap colorMatchToScene(Bitmap cutout, Bitmap scene) {
+        float[] person = new float[4];   // meanY, stdY, meanU, meanV
+        float[] target = new float[4];
+        if (!cutoutStats(cutout, person) || !sceneStats(scene, target)) {
+            return cutout;
+        }
+        float kY = target[1] / Math.max(person[1], 0.001f);
+        if (kY < COLOR_LUMA_SCALE_MIN) {
+            kY = COLOR_LUMA_SCALE_MIN;
+        } else if (kY > COLOR_LUMA_SCALE_MAX) {
+            kY = COLOR_LUMA_SCALE_MAX;
+        }
+        if (person[1] < 2f || target[1] < 2f) {
+            // Essentially flat signal: the contrast ratio is meaningless.
+            kY = 1f;
+        }
+        float dU = (target[2] - person[2]) * COLOR_CHROMA_STRENGTH;
+        float dV = (target[3] - person[3]) * COLOR_CHROMA_STRENGTH;
+        float shiftU = Math.max(-COLOR_CHROMA_SHIFT_MAX,
+                Math.min(COLOR_CHROMA_SHIFT_MAX, dU));
+        float shiftV = Math.max(-COLOR_CHROMA_SHIFT_MAX,
+                Math.min(COLOR_CHROMA_SHIFT_MAX, dV));
+
+        // Transfer in (Y, U, V): Y2 = kY*Y + cy, U2 = U + shiftU,
+        // V2 = V + shiftV, then back to RGB via R = Y + U, B = Y + V,
+        // G = Y - (wR*U + wB*V)/wG. Every output channel is linear in
+        // R, G, B plus a constant, i.e. exactly a ColorMatrix.
+        float cy = target[0] - kY * person[0];
+        float ky1 = kY - 1f;
+        float gk = kY + (LUMA_R + LUMA_B) / LUMA_G;
+        float tR = cy + shiftU;
+        float tB = cy + shiftV;
+        float tG = cy - (LUMA_R * shiftU + LUMA_B * shiftV) / LUMA_G;
+        ColorMatrix matrix = new ColorMatrix(new float[]{
+                ky1 * LUMA_R + 1f, ky1 * LUMA_G, ky1 * LUMA_B, 0, tR,
+                gk * LUMA_R - LUMA_R / LUMA_G, gk * LUMA_G,
+                gk * LUMA_B - LUMA_B / LUMA_G, 0, tG,
+                ky1 * LUMA_R, ky1 * LUMA_G, ky1 * LUMA_B + 1f, 0, tB,
+                0, 0, 0, 1, 0});
+        Bitmap matched = Bitmap.createBitmap(cutout.getWidth(), cutout.getHeight(),
+                Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(matched);
+        Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG);
+        paint.setColorFilter(new ColorMatrixColorFilter(matrix));
+        canvas.drawBitmap(cutout, 0, 0, paint);
+        cutout.recycle();
+        return matched;
+    }
+
+    /** Alpha-weighted luma/chroma statistics of the cut-out (person only). */
+    private static boolean cutoutStats(Bitmap cutout, float[] out) {
+        Bitmap small = downscaleForStats(cutout);
+        try {
+            int w = small.getWidth();
+            int h = small.getHeight();
+            int[] px = new int[w * h];
+            small.getPixels(px, 0, w, 0, 0, w, h);
+            double sw = 0, sy = 0, syy = 0, su = 0, sv = 0;
+            for (int p : px) {
+                int a = (p >>> 24);
+                if (a == 0) {
+                    continue;
+                }
+                double wt = a / 255.0;
+                double r = (p >> 16) & 0xFF;
+                double g = (p >> 8) & 0xFF;
+                double b = p & 0xFF;
+                double y = LUMA_R * r + LUMA_G * g + LUMA_B * b;
+                sw += wt;
+                sy += wt * y;
+                syy += wt * y * y;
+                su += wt * (r - y);
+                sv += wt * (b - y);
+            }
+            if (sw < 1.0) {
+                return false;
+            }
+            double meanY = sy / sw;
+            out[0] = (float) meanY;
+            out[1] = (float) Math.sqrt(Math.max(0.0, syy / sw - meanY * meanY));
+            out[2] = (float) (su / sw);
+            out[3] = (float) (sv / sw);
+            return true;
+        } finally {
+            if (small != cutout) {
+                small.recycle();
+            }
+        }
+    }
+
+    /** Unweighted luma/chroma statistics of the back scene. */
+    private static boolean sceneStats(Bitmap scene, float[] out) {
+        Bitmap small = downscaleForStats(scene);
+        try {
+            int w = small.getWidth();
+            int h = small.getHeight();
+            int[] px = new int[w * h];
+            small.getPixels(px, 0, w, 0, 0, w, h);
+            double n = 0, sy = 0, syy = 0, su = 0, sv = 0;
+            for (int p : px) {
+                double r = (p >> 16) & 0xFF;
+                double g = (p >> 8) & 0xFF;
+                double b = p & 0xFF;
+                double y = LUMA_R * r + LUMA_G * g + LUMA_B * b;
+                n += 1;
+                sy += y;
+                syy += y * y;
+                su += r - y;
+                sv += b - y;
+            }
+            if (n < 1.0) {
+                return false;
+            }
+            double meanY = sy / n;
+            out[0] = (float) meanY;
+            out[1] = (float) Math.sqrt(Math.max(0.0, syy / n - meanY * meanY));
+            out[2] = (float) (su / n);
+            out[3] = (float) (sv / n);
+            return true;
+        } finally {
+            if (small != scene) {
+                small.recycle();
+            }
+        }
+    }
+
+    private static Bitmap downscaleForStats(Bitmap src) {
+        int longSide = Math.max(src.getWidth(), src.getHeight());
+        if (longSide <= COLOR_STATS_SIDE) {
+            return src;
+        }
+        float scale = COLOR_STATS_SIDE / (float) longSide;
+        int w = Math.max(1, Math.round(src.getWidth() * scale));
+        int h = Math.max(1, Math.round(src.getHeight() * scale));
+        return Bitmap.createScaledBitmap(src, w, h, true);
     }
 
     private Bitmap upright(byte[] jpeg, int rotation, boolean mirror) {

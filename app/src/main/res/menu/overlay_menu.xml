@@ -23,6 +23,11 @@
         android:title="Save originals + cut-out" />
 
     <item
+        android:id="@+id/color_match"
+        android:checkable="true"
+        android:title="Color match person to scene" />
+
+    <item
         android:id="@+id/show_stats"
         android:checkable="true"
         android:title="Show stats (FPS)" />
