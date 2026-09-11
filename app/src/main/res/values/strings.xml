@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SelfieFusion</string>
+    <string name="shutter_desc">Capture still photo</string>
+    <string name="mode_menu_desc">Select overlay view mode</string>
+</resources>

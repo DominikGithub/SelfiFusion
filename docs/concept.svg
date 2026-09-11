@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1160" viewBox="0 0 800 1160" font-family="DejaVu Sans, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#123152"/>
+      <stop offset="1" stop-color="#08101D"/>
+    </linearGradient>
+    <linearGradient id="sunset" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFA45C"/>
+      <stop offset="1" stop-color="#E8503A"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="800" height="1160" rx="32" fill="url(#bg)"/>
+
+  <text x="400" y="46" font-size="26" font-weight="bold" fill="#D9E7F6" text-anchor="middle">BOTH CAMERAS SHOOT AT ONCE</text>
+
+  <!-- Card A: front camera (sees you) -->
+  <rect x="44" y="80" width="324" height="312" rx="24" fill="#1B3E63"/>
+  <circle cx="270" cy="142" r="30" fill="#FFFFFF"/>
+  <path d="M221,253 a49,47 0 0 1 98,0 z" fill="#FFFFFF"/>
+  <rect x="84" y="124" width="44" height="150" rx="12" fill="#FFFFFF"/>
+  <circle cx="120" cy="154" r="7" fill="#1B3E63"/>
+  <line x1="140" y1="154" x2="196" y2="154" stroke="#FFFFFF" stroke-width="5" stroke-dasharray="10 8"/>
+  <polygon points="208,154 192,146 192,162" fill="#FFFFFF"/>
+  <text x="206" y="322" font-size="26" font-weight="bold" fill="#FFFFFF" text-anchor="middle">FRONT CAMERA</text>
+  <text x="206" y="352" font-size="19" fill="#A8C4E8" text-anchor="middle">sees you</text>
+
+  <!-- plus -->
+  <rect x="376" y="228" width="48" height="16" rx="8" fill="#FFFFFF"/>
+  <rect x="392" y="212" width="16" height="48" rx="8" fill="#FFFFFF"/>
+
+  <!-- Card B: back camera (sees the view) -->
+  <rect x="432" y="80" width="324" height="312" rx="24" fill="url(#sunset)"/>
+  <circle cx="640" cy="118" r="26" fill="#FFE9A8"/>
+  <polygon points="480,270 570,175 660,270" fill="#E8734C"/>
+  <polygon points="588,270 664,196 740,270" fill="#C1402F"/>
+  <rect x="700" y="124" width="44" height="150" rx="12" fill="#FFFFFF"/>
+  <circle cx="708" cy="154" r="7" fill="#1B3E63"/>
+  <line x1="692" y1="154" x2="640" y2="154" stroke="#FFFFFF" stroke-width="5" stroke-dasharray="10 8"/>
+  <polygon points="628,154 644,146 644,162" fill="#FFFFFF"/>
+  <text x="594" y="322" font-size="26" font-weight="bold" fill="#FFFFFF" text-anchor="middle">BACK CAMERA</text>
+  <text x="594" y="352" font-size="19" fill="#FFE3CC" text-anchor="middle">sees the view</text>
+
+  <!-- merge arrows -->
+  <path d="M206,400 C206,452 320,468 386,502" fill="none" stroke="#FFFFFF" stroke-width="9" stroke-linecap="round"/>
+  <path d="M594,400 C594,452 480,468 414,502" fill="none" stroke="#FFFFFF" stroke-width="9" stroke-linecap="round"/>
+  <polygon points="397,516 381,508 393,498" fill="#FFFFFF"/>
+  <polygon points="403,516 419,508 407,498" fill="#FFFFFF"/>
+
+  <!-- fused result -->
+  <rect x="120" y="520" width="560" height="460" rx="24" fill="url(#sunset)" stroke="#FFFFFF" stroke-width="5"/>
+  <circle cx="530" cy="600" r="40" fill="#FFE9A8"/>
+  <polygon points="170,980 300,700 430,980" fill="#E8734C"/>
+  <polygon points="360,980 500,740 640,980" fill="#C1402F"/>
+  <circle cx="400" cy="811" r="48" fill="#FFFFFF"/>
+  <path d="M321,980 a79,76 0 0 1 158,0 z" fill="#FFFFFF"/>
+
+  <text x="400" y="1016" font-size="30" font-weight="bold" fill="#FFFFFF" text-anchor="middle">FUSED SELFIE</text>
+  <text x="400" y="1042" font-size="19" fill="#A8C4E8" text-anchor="middle">you + the view, in one picture</text>
+
+  <!-- gesture hint strip -->
+  <line x1="118" y1="1088" x2="198" y2="1088" stroke="#FFFFFF" stroke-width="5"/>
+  <polygon points="108,1088 122,1081 122,1095" fill="#FFFFFF"/>
+  <polygon points="208,1088 194,1081 194,1095" fill="#FFFFFF"/>
+  <text x="400" y="1095" font-size="19" fill="#D9E7F6" text-anchor="middle">position and size: one-finger drag</text>
+  <line x1="648" y1="1048" x2="648" y2="1128" stroke="#FFFFFF" stroke-width="5"/>
+  <polygon points="648,1038 641,1052 655,1052" fill="#FFFFFF"/>
+  <polygon points="648,1138 641,1124 655,1124" fill="#FFFFFF"/>
+</svg>

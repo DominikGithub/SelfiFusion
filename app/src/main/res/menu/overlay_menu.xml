@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <group
+        android:id="@+id/modeGroup"
+        android:checkableBehavior="single">
+        <item
+            android:id="@+id/mode_composite"
+            android:title="Composite — person over back scene" />
+        <item
+            android:id="@+id/mode_red"
+            android:title="Red background" />
+        <item
+            android:id="@+id/mode_heat"
+            android:title="Mask heatmap" />
+        <item
+            android:id="@+id/mode_off"
+            android:title="Overlay off" />
+    </group>
+
+    <item
+        android:id="@+id/save_extras"
+        android:checkable="true"
+        android:title="Save originals + cut-out" />
+
+    <item
+        android:id="@+id/show_stats"
+        android:checkable="true"
+        android:title="Show stats (FPS)" />
+</menu>

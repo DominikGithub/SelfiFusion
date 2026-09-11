@@ -1,0 +1,28 @@
+# Gradle
+.gradle/
+build/
+gradlew.bat
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+local.properties
+captures/
+.navigation/
+
+# Native build outputs (not used, but ignored in case)
+.cxx/
+.externalNativeBuild/
+
+# Built binaries
+*.apk
+*.aab
+*.ap_
+
+# OS / editor noise
+.DS_Store
+*.log
+*.swp
+
+# Local planning notes
+PLAN.md
