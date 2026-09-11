@@ -29,7 +29,9 @@ import android.view.Menu;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageButton;
+import android.widget.LinearLayout;
 import android.widget.PopupMenu;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -106,6 +108,18 @@ public class MainActivity extends ComponentActivity {
     private TextView infoView;
     private Button shutterButton;
     private ImageButton modeButton;
+    private LinearLayout captureStatusCard;
+    private ProgressBar captureSpinner;
+    private TextView captureStatusText;
+    private View flashView;
+    private boolean captureUiActive = false;
+    private final Runnable hideDoneCard = new Runnable() {
+        @Override
+        public void run() {
+            captureStatusCard.animate().cancel();
+            captureStatusCard.animate().alpha(0f).setDuration(250).start();
+        }
+    };
 
     private final ExecutorService cameraExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService composeExecutor = Executors.newSingleThreadExecutor();
@@ -179,6 +193,10 @@ public class MainActivity extends ComponentActivity {
         infoView = findViewById(R.id.infoView);
         shutterButton = findViewById(R.id.shutterButton);
         modeButton = findViewById(R.id.modeButton);
+        captureStatusCard = findViewById(R.id.captureStatusCard);
+        captureSpinner = findViewById(R.id.captureSpinner);
+        captureStatusText = findViewById(R.id.captureStatusText);
+        flashView = findViewById(R.id.flashView);
 
         streamSegmenter = Segmentation.getClient(new SelfieSegmenterOptions.Builder()
                 .setDetectorMode(SelfieSegmenterOptions.STREAM_MODE)
@@ -686,6 +704,52 @@ public class MainActivity extends ComponentActivity {
         infoView.setText(text);
     }
 
+    private void flash() {
+        flashView.animate().cancel();
+        flashView.setVisibility(View.VISIBLE);
+        flashView.setAlpha(0.55f);
+        flashView.animate().alpha(0f).setDuration(220)
+                .withEndAction(() -> flashView.setVisibility(View.GONE))
+                .start();
+    }
+
+    private void setShutterBusy(boolean busy) {
+        shutterButton.setEnabled(!busy);
+        shutterButton.animate().cancel();
+        shutterButton.animate().alpha(busy ? 0.35f : 1f).setDuration(150).start();
+    }
+
+    private void showCaptureStage(String stage) {
+        mainHandler.post(() -> {
+            captureUiActive = true;
+            mainHandler.removeCallbacks(hideDoneCard);
+            captureStatusCard.animate().cancel();
+            captureSpinner.setVisibility(View.VISIBLE);
+            captureStatusText.setText(stage);
+            captureStatusCard.setAlpha(1f);
+            captureStatusCard.setVisibility(View.VISIBLE);
+        });
+    }
+
+    private void finishCaptureUi(boolean ok, String message) {
+        mainHandler.post(() -> {
+            if (!captureUiActive) {
+                return;
+            }
+            captureUiActive = false;
+            setShutterBusy(false);
+            if (ok) {
+                captureSpinner.setVisibility(View.GONE);
+                captureStatusText.setText("\u2713 " + message);
+                mainHandler.postDelayed(hideDoneCard, 1600);
+            } else {
+                captureStatusCard.animate().cancel();
+                captureStatusCard.setAlpha(1f);
+                captureStatusCard.setVisibility(View.GONE);
+            }
+        });
+    }
+
     private void takeStill() {
         if (frontImageCapture == null || capturing) {
             return;
@@ -702,7 +766,9 @@ public class MainActivity extends ComponentActivity {
 
     private void takeFrontStill() {
         capturing = true;
-        Toast.makeText(this, "Capturing + segmenting full-res...", Toast.LENGTH_SHORT).show();
+        flash();
+        setShutterBusy(true);
+        showCaptureStage("Capturing full-res photo...");
         frontImageCapture.takePicture(cameraExecutor, new ImageCapture.OnImageCapturedCallback() {
             @Override
             public void onCaptureSuccess(@NonNull ImageProxy image) {
@@ -715,20 +781,25 @@ public class MainActivity extends ComponentActivity {
 
                     Bitmap photo = upright(jpeg, rotation, true);
                     if (photo == null) {
+                        capturing = false;
+                        finishCaptureUi(false, null);
                         runOnUiThread(() -> Toast.makeText(MainActivity.this,
                                 "Failed to decode captured image", Toast.LENGTH_LONG).show());
                         return;
                     }
+                    showCaptureStage("Segmenting person...");
                     stillSegmenter.process(InputImage.fromBitmap(photo, 0))
                             .addOnSuccessListener(cameraExecutor, mask -> saveResult(jpeg, photo, mask))
                             .addOnFailureListener(cameraExecutor, e -> {
                                 photo.recycle();
+                                finishCaptureUi(false, null);
                                 runOnUiThread(() -> Toast.makeText(MainActivity.this,
                                         "Segmentation failed: " + e.getMessage(), Toast.LENGTH_LONG).show());
                             })
                             .addOnCompleteListener(cameraExecutor, r -> capturing = false);
                 } catch (Throwable t) {
                     capturing = false;
+                    finishCaptureUi(false, null);
                     runOnUiThread(() -> Toast.makeText(MainActivity.this,
                             "Capture error: " + t.getMessage(), Toast.LENGTH_LONG).show());
                 }
@@ -737,6 +808,7 @@ public class MainActivity extends ComponentActivity {
             @Override
             public void onError(@NonNull ImageCaptureException exception) {
                 capturing = false;
+                finishCaptureUi(false, null);
                 runOnUiThread(() -> Toast.makeText(MainActivity.this,
                         "Capture failed: " + exception.getMessage(), Toast.LENGTH_LONG).show());
             }
@@ -751,7 +823,9 @@ public class MainActivity extends ComponentActivity {
         // so the saved still reproduces exactly what the user arranged.
         livePlacement = overlayView.snapshotPlacement();
         dualStamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
-        Toast.makeText(this, "Capturing both cameras + fusing...", Toast.LENGTH_SHORT).show();
+        flash();
+        setShutterBusy(true);
+        showCaptureStage("Capturing both cameras...");
         frontImageCapture.takePicture(cameraExecutor, new ImageCapture.OnImageCapturedCallback() {
             @Override
             public void onCaptureSuccess(@NonNull ImageProxy image) {
@@ -768,6 +842,7 @@ public class MainActivity extends ComponentActivity {
                 runOnUiThread(() -> Toast.makeText(MainActivity.this,
                         "Front capture failed: " + exception.getMessage(), Toast.LENGTH_LONG).show());
                 capturing = false;
+                finishCaptureUi(false, null);
             }
         });
         backImageCapture.takePicture(cameraExecutor, new ImageCapture.OnImageCapturedCallback() {
@@ -786,6 +861,7 @@ public class MainActivity extends ComponentActivity {
                 runOnUiThread(() -> Toast.makeText(MainActivity.this,
                         "Back capture failed: " + exception.getMessage(), Toast.LENGTH_LONG).show());
                 capturing = false;
+                finishCaptureUi(false, null);
             }
         });
     }
@@ -809,8 +885,10 @@ public class MainActivity extends ComponentActivity {
                 runOnUiThread(() -> Toast.makeText(MainActivity.this,
                         "Failed to decode front image", Toast.LENGTH_LONG).show());
                 capturing = false;
+                finishCaptureUi(false, null);
                 return;
             }
+            showCaptureStage("Segmenting person...");
             stillSegmenter.process(InputImage.fromBitmap(front, 0))
                     .addOnSuccessListener(cameraExecutor, mask ->
                             processFused(front, frontJpeg, backJpeg, backRotation, mask,
@@ -820,9 +898,11 @@ public class MainActivity extends ComponentActivity {
                         runOnUiThread(() -> Toast.makeText(MainActivity.this,
                                 "Segmentation failed: " + e.getMessage(), Toast.LENGTH_LONG).show());
                         capturing = false;
+                        finishCaptureUi(false, null);
                     });
         } catch (Throwable t) {
             capturing = false;
+            finishCaptureUi(false, null);
             runOnUiThread(() -> Toast.makeText(MainActivity.this,
                     "Fusion error: " + t.getMessage(), Toast.LENGTH_LONG).show());
         }
@@ -830,22 +910,25 @@ public class MainActivity extends ComponentActivity {
 
 private void processFused(Bitmap front, byte[] frontJpeg, byte[] backJpeg,
                               int backRotation, SegmentationMask mask,
-                              MaskOverlayView.PersonPlacement placement) {
+                               MaskOverlayView.PersonPlacement placement) {
         Bitmap cutout = null;
         Bitmap back = null;
         Bitmap fused = null;
+        showCaptureStage("Fusing + saving...");
         try {
             cutout = buildCutout(front, mask);
             front.recycle();
             if (cutout == null) {
                 runOnUiThread(() -> Toast.makeText(MainActivity.this,
                         "Segmentation mask invalid", Toast.LENGTH_LONG).show());
+                finishCaptureUi(false, null);
                 return;
             }
             back = upright(backJpeg, backRotation, false);
             if (back == null) {
                 runOnUiThread(() -> Toast.makeText(MainActivity.this,
                         "Failed to decode back image", Toast.LENGTH_LONG).show());
+                finishCaptureUi(false, null);
                 return;
             }
             fused = Bitmap.createBitmap(back.getWidth(), back.getHeight(), Bitmap.Config.ARGB_8888);
@@ -861,14 +944,15 @@ private void processFused(Bitmap front, byte[] frontJpeg, byte[] backJpeg,
                 saveBitmap(cutout, "SF_cutout_" + dualStamp + ".png", "image/png", true);
             }
             saveBitmap(fused, "SF_fused_" + dualStamp + ".jpg", "image/jpeg", false);
-            runOnUiThread(() -> Toast.makeText(MainActivity.this,
-                    saveExtras ? "Fused selfie + materials saved to Pictures/SelfieFusion"
-                            : "Fused selfie saved to Pictures/SelfieFusion",
-                    Toast.LENGTH_LONG).show());
+            finishCaptureUi(true, saveExtras
+                    ? "Fused selfie + materials saved to Pictures/SelfieFusion"
+                    : "Fused selfie saved to Pictures/SelfieFusion");
         } catch (OutOfMemoryError e) {
+            finishCaptureUi(false, null);
             runOnUiThread(() -> Toast.makeText(MainActivity.this,
                     "Out of memory processing fused still", Toast.LENGTH_LONG).show());
         } catch (Throwable t) {
+            finishCaptureUi(false, null);
             runOnUiThread(() -> Toast.makeText(MainActivity.this,
                     "Fusion error: " + t.getMessage(), Toast.LENGTH_LONG).show());
         } finally {
@@ -1041,6 +1125,7 @@ private void processFused(Bitmap front, byte[] frontJpeg, byte[] backJpeg,
 
     private void saveResult(byte[] originalJpeg, Bitmap photo, SegmentationMask mask) {
         try {
+            showCaptureStage("Saving...");
             Bitmap cutout = buildCutout(photo, mask);
             photo.recycle();
             String stamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
@@ -1051,12 +1136,13 @@ private void processFused(Bitmap front, byte[] frontJpeg, byte[] backJpeg,
                 saveBitmap(cutout, "SF_cutout_" + stamp + ".png", "image/png", true);
                 cutout.recycle();
             }
-            runOnUiThread(() -> Toast.makeText(MainActivity.this,
-                    "Saved to Pictures/SelfieFusion", Toast.LENGTH_LONG).show());
+            finishCaptureUi(true, "Saved to Pictures/SelfieFusion");
         } catch (OutOfMemoryError e) {
+            finishCaptureUi(false, null);
             runOnUiThread(() -> Toast.makeText(MainActivity.this,
                     "Out of memory processing still", Toast.LENGTH_LONG).show());
         } catch (Throwable t) {
+            finishCaptureUi(false, null);
             runOnUiThread(() -> Toast.makeText(MainActivity.this,
                     "Save error: " + t.getMessage(), Toast.LENGTH_LONG).show());
         }
@@ -1144,6 +1230,7 @@ private void processFused(Bitmap front, byte[] frontJpeg, byte[] backJpeg,
     protected void onDestroy() {
         super.onDestroy();
         mainHandler.removeCallbacks(fpsRunnable);
+        mainHandler.removeCallbacks(hideDoneCard);
         if (streamSegmenter != null) {
             streamSegmenter.close();
         }

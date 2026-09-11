@@ -1,8 +1,17 @@
 # SelfieFusion
 
-| | |
-|---|---|
-| <a href="docs/concept.svg"><img src="docs/concept.svg" width="420" alt="SelfieFusion concept: while you face the view, the front camera captures you and the back camera captures the scene in front of you — both shots fuse into one photo; the person's position and size adapt to one-finger drag gestures"></a> | **You don't have to turn your back to the background you actually want in the picture.**<br><br>See yourself and what you're looking at — in one picture. A normal selfie has a built-in blind spot: the front camera faces *you*, so the view you're actually looking at never makes it into the photo — the only workaround is turning around, which means the camera no longer faces you. SelfieFusion removes that blind spot. While you take a selfie, **both phone cameras shoot at the same time** — the front camera captures you, the back camera captures the scene in front of you — and the app fuses both into a single full-resolution photo.<br><br>The result looks like a picture taken *of* you standing in that scene: you in the foreground, the view you were facing as the backdrop — as if someone else had photographed you.<br><br>*Arrange it live: one-finger drag gestures adapt the person's position and size — what you arrange is what you get.* |
+<table>
+  <tbody>
+    <tr>
+      <td width="600" valign="top">
+        <a href="docs/concept.svg"><img src="docs/concept.svg" width="100%" alt="SelfieFusion concept: while you face the view, the front camera captures you and the back camera captures the scene in front of you — both shots fuse into one photo; the person's position and size adapt to one-finger drag gestures"></a>
+      </td>
+      <td valign="top">
+        <strong>You don't have to turn your back to the background you actually want in the picture.</strong><br><br>See yourself and what you're looking at — in one picture. A normal selfie has a built-in blind spot: the front camera faces <em>you</em>, so the view you're actually looking at never makes it into the photo — the only workaround is turning around, which means the camera no longer faces you. SelfieFusion removes that blind spot. While you take a selfie, <strong>both phone cameras shoot at the same time</strong> — the front camera captures you, the back camera captures the scene in front of you — and the app fuses both into a single full-resolution photo.<br><br>The result looks like a picture taken <em>of</em> you standing in that scene: you in the foreground, the view you were facing as the backdrop — as if someone else had photographed you.<br><br><em>Arrange it live: one-finger drag gestures adapt the person's position and size — what you arrange is what you get.</em>
+      </td>
+    </tr>
+  </tbody>
+</table>
 
 
 Under the hood, SelfieFusion is an Android app that streams the front and back cameras concurrently (on devices with concurrent-camera support), segments the person from the front-camera feed entirely on-device, and composites them live over the rear-camera scene — you watch the fused selfie take shape in real time before you press the shutter.

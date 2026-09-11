@@ -31,6 +31,33 @@
         android:textSize="12sp"
         android:visibility="gone" />
 
+    <LinearLayout
+        android:id="@+id/captureStatusCard"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:background="@drawable/bg_capture_status"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:padding="24dp"
+        android:visibility="gone">
+
+        <ProgressBar
+            android:id="@+id/captureSpinner"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:indeterminate="true"
+            android:indeterminateTint="@android:color/white" />
+
+        <TextView
+            android:id="@+id/captureStatusText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp" />
+    </LinearLayout>
+
     <Button
         android:id="@+id/shutterButton"
         android:layout_width="76dp"
@@ -51,4 +78,13 @@
         android:scaleType="centerInside"
         android:src="@drawable/ic_view_modes"
         android:contentDescription="@string/mode_menu_desc" />
+
+    <View
+        android:id="@+id/flashView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:alpha="0"
+        android:background="#FFFFFF"
+        android:importantForAccessibility="no"
+        android:visibility="gone" />
 </FrameLayout>
