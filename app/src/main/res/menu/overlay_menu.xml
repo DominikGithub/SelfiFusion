@@ -28,6 +28,11 @@
         android:title="Color match person to scene" />
 
     <item
+        android:id="@+id/generative_blend"
+        android:checkable="true"
+        android:title="Generative seam blend (AI)" />
+
+    <item
         android:id="@+id/show_stats"
         android:checkable="true"
         android:title="Show stats (FPS)" />

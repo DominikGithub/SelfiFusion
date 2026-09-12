@@ -10,13 +10,44 @@ android {
         applicationId "com.selfiefusion.segtest"
         minSdk 26
         targetSdk 34
-        versionCode 12
-        versionName "0.8.1"
+        versionCode 16
+        versionName "0.9.3"
+        // Prototype targets the Pixel 9 (arm64). The ORT AAR ships 4 ABIs
+        // (~60MB); arm64-v8a alone keeps the APK small. Remove the filter
+        // for a general release build.
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
     }
 
     buildTypes {
         release {
             minifyEnabled false
+        }
+    }
+
+    // M7 seam blend model ships INSIDE the APK: the git-ignored
+    // models/inpaint.onnx (~93MB download, see README) is merged in as
+    // the asset "inpaint.onnx" and the app extracts it to its private
+    // storage on first use - no device-side copy steps. Everything in
+    // models/ becomes an APK asset; a checkout without the model still
+    // builds (the app then falls back to the edge fade).
+    sourceSets {
+        main {
+            assets.srcDir '../models'
+        }
+    }
+    // Stored (not deflated) so the one-time extraction is a plain byte
+    // copy and the low-RAM build never has to deflate a 93MB blob.
+    androidResources {
+        noCompress 'onnx'
+    }
+
+    // Build output name: SelfiFusion.apk instead of the default
+    // app-<variant>.apk (the README/PLAN install instructions use it).
+    applicationVariants.all { variant ->
+        variant.outputs.all { output ->
+            outputFileName = "SelfiFusion.apk"
         }
     }
     compileOptions {
@@ -41,4 +72,6 @@ dependencies {
     implementation 'androidx.camera:camera-view:1.3.4'
     implementation 'androidx.activity:activity:1.8.2'
     implementation 'com.google.mlkit:segmentation-selfie:16.0.0-beta6'
+    // M7 generative seam blend: on-device LaMa inpainting (bundled as an APK asset).
+    implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.29.0'
 }

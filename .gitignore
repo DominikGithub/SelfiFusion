@@ -26,3 +26,6 @@ captures/
 
 # Local planning notes
 PLAN.md
+
+# LaMa inpainting model (M7), bundled into the APK at build time - never commit ~100MB blobs
+models/
